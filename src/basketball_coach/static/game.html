@@ -12,6 +12,8 @@
   .severity-medium { border-left: 3px solid #f97316; }
   .severity-low { border-left: 3px solid #6b7280; }
   .phase-badge { font-size: 0.7rem; padding: 2px 7px; border-radius: 4px; }
+  .player-chip { cursor: pointer; user-select: none; }
+  .player-chip.selected { background: #f97316; color: white; border-color: #f97316; }
 </style>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen">
@@ -21,7 +23,6 @@
   <a href="/" class="text-gray-400 hover:text-white text-sm">← 返回</a>
   <span class="text-gray-600">|</span>
   <span id="gameTitle" class="font-semibold">加载中...</span>
-  <span id="gameOpponent" class="text-gray-400 text-sm"></span>
 </div>
 
 <div class="flex h-[calc(100vh-49px)]">
@@ -69,6 +70,25 @@
       </button>
     </div>
 
+    <!-- Roster bar -->
+    <div id="rosterBar" class="px-4 py-2 border-b border-gray-800 bg-gray-900/50 flex-shrink-0">
+      <div id="rosterDisplay" class="flex items-center gap-2 flex-wrap">
+        <span class="text-gray-500 text-xs">球员名单：</span>
+        <span id="rosterChips" class="flex flex-wrap gap-1"></span>
+        <button onclick="showRosterEditor()" class="text-xs text-gray-500 hover:text-orange-400 border border-gray-700 rounded px-2 py-0.5" id="btnEditRoster">
+          + 设置名单
+        </button>
+      </div>
+      <!-- Roster editor (inline) -->
+      <div id="rosterEditor" class="hidden mt-2 flex items-center gap-2">
+        <input id="rosterInput" type="text" placeholder="输入球员名，逗号或回车分隔"
+          class="flex-1 bg-gray-800 border border-gray-600 rounded px-3 py-1.5 text-sm focus:outline-none focus:border-orange-500"
+          onkeydown="handleRosterKey(event)">
+        <button onclick="saveRoster()" class="bg-orange-500 hover:bg-orange-600 text-white px-3 py-1.5 rounded text-xs">保存</button>
+        <button onclick="hideRosterEditor()" class="bg-gray-700 hover:bg-gray-600 text-white px-3 py-1.5 rounded text-xs">取消</button>
+      </div>
+    </div>
+
     <!-- Possession list (scrollable) -->
     <div class="flex-1 overflow-y-auto px-4 py-3 space-y-2" id="possessionList">
       <p class="text-gray-600 text-xs text-center py-8">标记视频中的攻防回合后，点击"保存回合"添加</p>
@@ -78,66 +98,33 @@
   <!-- RIGHT: Analysis panel -->
   <div class="w-96 flex-shrink-0 overflow-y-auto" id="analysisPanel">
     <div class="p-5 text-gray-500 text-sm text-center mt-10">
-      点击左侧回合的"AI分析"按钮<br>查看错误识别与训练建议
+      保存回合后自动分析<br>点击左侧已分析回合查看结果
     </div>
   </div>
 
 </div>
 
-<!-- Save round dialog (modal) -->
+<!-- Save round dialog (minimal) -->
 <div id="saveDialog" class="hidden fixed inset-0 bg-black/70 flex items-center justify-center z-50">
-  <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-96 max-h-[90vh] overflow-y-auto">
-    <h3 class="font-semibold mb-4">保存回合</h3>
-    <div class="space-y-3 text-sm">
-      <div>
-        <label class="text-gray-400 text-xs mb-1 block">回合标题</label>
-        <input id="dTitle" type="text" placeholder="如：第三节小宇防守失位"
-          class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500">
-      </div>
-      <div class="flex gap-3">
-        <div class="flex-1">
-          <label class="text-gray-400 text-xs mb-1 block">执行方</label>
-          <select id="dTeam" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500">
-            <option value="我方">我方</option>
-            <option value="对方">对方</option>
-          </select>
-        </div>
-        <div class="flex-1">
-          <label class="text-gray-400 text-xs mb-1 block">回合类型</label>
-          <select id="dPhase" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500">
-            <option value="offense">半场进攻</option>
-            <option value="defense">半场防守</option>
-            <option value="transition_offense">快攻/转换进攻</option>
-            <option value="transition_defense">退防/转换防守</option>
-          </select>
-        </div>
-      </div>
-      <div>
-        <label class="text-gray-400 text-xs mb-1 block">结果</label>
-        <select id="dResult" class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500">
-          <option value="">-- 选择结果 --</option>
-          <option value="投篮命中">投篮命中</option>
-          <option value="投篮不中">投篮不中</option>
-          <option value="失误">失误</option>
-          <option value="犯规">犯规</option>
-          <option value="防守成功">防守成功</option>
-          <option value="防守失败">防守失败</option>
-          <option value="球权转换">球权转换</option>
-        </select>
-      </div>
-      <div>
-        <label class="text-gray-400 text-xs mb-1 block">相关球员（逗号分隔）</label>
-        <input id="dPlayers" type="text" placeholder="如：小宇, 小杰"
-          class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500">
-      </div>
-      <div>
-        <label class="text-gray-400 text-xs mb-1 block">教练备注（可选）</label>
-        <textarea id="dDesc" rows="2" placeholder="记录你观察到的关键问题..."
-          class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 focus:outline-none focus:border-orange-500 resize-none"></textarea>
-      </div>
+  <div class="bg-gray-900 border border-gray-700 rounded-xl p-5 w-96">
+    <h3 class="font-semibold mb-1">保存回合</h3>
+    <p id="dTimeRange" class="text-gray-400 text-xs font-mono mb-4"></p>
+
+    <!-- Player selection (only shown if roster exists) -->
+    <div id="dPlayerSection" class="hidden mb-4">
+      <label class="text-gray-400 text-xs mb-2 block">涉及球员（可多选）</label>
+      <div id="dPlayerChips" class="flex flex-wrap gap-2"></div>
     </div>
-    <div class="flex gap-2 mt-4">
-      <button onclick="savePossession()" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg text-sm font-medium">保存</button>
+
+    <!-- Optional note -->
+    <div class="mb-4">
+      <label class="text-gray-400 text-xs mb-1 block">教练备注（可选）</label>
+      <input id="dDesc" type="text" placeholder="记录你观察到的关键问题..."
+        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500">
+    </div>
+
+    <div class="flex gap-2">
+      <button onclick="savePossession()" class="flex-1 bg-orange-500 hover:bg-orange-600 text-white py-2 rounded-lg text-sm font-medium">保存并分析</button>
       <button onclick="hideDialog()" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white py-2 rounded-lg text-sm">取消</button>
     </div>
   </div>
@@ -148,28 +135,31 @@ const gameId = location.pathname.split('/').pop();
 const video = document.getElementById('videoPlayer');
 let markStartTime = null, markEndTime = null;
 let possessions = [];
+let homeRoster = [];  // player names for this game
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
   const res = await fetch(`/api/games/${gameId}`);
   const game = await res.json();
   document.getElementById('gameTitle').textContent = game.title;
-  document.getElementById('gameOpponent').textContent = game.opponent ? `vs ${game.opponent}` : '';
   document.title = game.title + ' — 比赛分析台';
 
-  if (game.has_video) {
-    loadVideo();
-  }
+  homeRoster = game.home_players || [];
+  renderRoster();
+
+  if (game.has_video) loadVideo();
   possessions = game.possessions || [];
   renderPossessions();
+
+  // resume polling for any in-progress analyses
+  possessions.filter(p => p.analysis_status === 'analyzing').forEach(p => pollAnalysis(p.id));
 }
 
 function loadVideo() {
-  const placeholder = document.getElementById('videoPlaceholder');
+  document.getElementById('videoPlaceholder').classList.add('hidden');
   const player = document.getElementById('videoPlayer');
   player.src = `/api/games/${gameId}/video`;
   player.classList.remove('hidden');
-  placeholder.classList.add('hidden');
   document.getElementById('btnMarkStart').disabled = false;
 }
 
@@ -180,7 +170,45 @@ async function uploadVideo(input) {
   fd.append('file', file);
   input.closest('label').textContent = '上传中...';
   const res = await fetch(`/api/games/${gameId}/video`, {method: 'POST', body: fd});
-  if (res.ok) { loadVideo(); }
+  if (res.ok) loadVideo();
+}
+
+// ── Roster ────────────────────────────────────────────────────────────────────
+function renderRoster() {
+  const chips = document.getElementById('rosterChips');
+  chips.innerHTML = homeRoster.map(name =>
+    `<span class="text-xs bg-gray-700 text-gray-300 rounded px-2 py-0.5">${name}</span>`
+  ).join('');
+  document.getElementById('btnEditRoster').textContent = homeRoster.length ? '编辑' : '+ 设置名单';
+}
+
+function showRosterEditor() {
+  document.getElementById('rosterInput').value = homeRoster.join(', ');
+  document.getElementById('rosterEditor').classList.remove('hidden');
+  document.getElementById('rosterInput').focus();
+}
+
+function hideRosterEditor() {
+  document.getElementById('rosterEditor').classList.add('hidden');
+}
+
+function handleRosterKey(e) {
+  if (e.key === 'Enter') saveRoster();
+}
+
+async function saveRoster() {
+  const val = document.getElementById('rosterInput').value;
+  const players = val.split(/[,，]/).map(s => s.trim()).filter(Boolean);
+  const res = await fetch(`/api/games/${gameId}/roster`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({players}),
+  });
+  if (res.ok) {
+    homeRoster = players;
+    renderRoster();
+    hideRosterEditor();
+  }
 }
 
 // ── Marking ───────────────────────────────────────────────────────────────────
@@ -193,6 +221,7 @@ function markStart() {
   markStartTime = video.currentTime;
   markEndTime = null;
   document.getElementById('startDisplay').textContent = fmtTime(markStartTime);
+  document.getElementById('startDisplay').style.color = '';
   document.getElementById('endDisplay').textContent = '--:--';
   document.getElementById('btnMarkEnd').disabled = false;
   document.getElementById('btnSaveRound').disabled = true;
@@ -200,9 +229,12 @@ function markStart() {
 
 function markEnd() {
   if (video.currentTime <= markStartTime) {
-    document.getElementById('endDisplay').style.color='#ef4444'; return;
+    document.getElementById('endDisplay').style.color = '#ef4444';
+    document.getElementById('endDisplay').textContent = '! 需晚于开始';
+    return;
   }
   markEndTime = video.currentTime;
+  document.getElementById('endDisplay').style.color = '';
   document.getElementById('endDisplay').textContent = fmtTime(markEndTime);
   document.getElementById('btnSaveRound').disabled = false;
 }
@@ -210,30 +242,43 @@ function markEnd() {
 // ── Save dialog ───────────────────────────────────────────────────────────────
 function showSaveDialog() {
   if (markStartTime === null || markEndTime === null) return;
-  document.getElementById('dTitle').value = '';
-  document.getElementById('dTeam').value = '我方';
-  document.getElementById('dPhase').value = 'offense';
-  document.getElementById('dResult').value = '';
-  document.getElementById('dPlayers').value = '';
+  const dur = Math.round(markEndTime - markStartTime);
+  document.getElementById('dTimeRange').textContent =
+    `${fmtTime(markStartTime)} → ${fmtTime(markEndTime)}（${dur}秒）`;
   document.getElementById('dDesc').value = '';
+
+  // Build player checkboxes
+  const section = document.getElementById('dPlayerSection');
+  const chips = document.getElementById('dPlayerChips');
+  if (homeRoster.length) {
+    chips.innerHTML = homeRoster.map(name =>
+      `<button type="button" class="player-chip text-xs border border-gray-600 text-gray-300 rounded-full px-3 py-1"
+        onclick="togglePlayer(this)">${name}</button>`
+    ).join('');
+    section.classList.remove('hidden');
+  } else {
+    section.classList.add('hidden');
+  }
+
   document.getElementById('saveDialog').classList.remove('hidden');
 }
+
 function hideDialog() {
   document.getElementById('saveDialog').classList.add('hidden');
 }
 
+function togglePlayer(btn) {
+  btn.classList.toggle('selected');
+}
+
 async function savePossession() {
-  const players = document.getElementById('dPlayers').value
-    .split(',').map(s=>s.trim()).filter(Boolean);
+  const players = [...document.querySelectorAll('#dPlayerChips .player-chip.selected')]
+    .map(b => b.textContent);
   const body = {
-    title: document.getElementById('dTitle').value || `回合 ${fmtTime(markStartTime)}`,
     start_time: markStartTime,
     end_time: markEndTime,
-    team: document.getElementById('dTeam').value,
-    phase: document.getElementById('dPhase').value,
-    result: document.getElementById('dResult').value,
     players,
-    description: document.getElementById('dDesc').value,
+    description: document.getElementById('dDesc').value.trim(),
   };
   const res = await fetch(`/api/games/${gameId}/possessions`, {
     method: 'POST',
@@ -250,6 +295,8 @@ async function savePossession() {
     document.getElementById('endDisplay').textContent = '--:--';
     document.getElementById('btnMarkEnd').disabled = true;
     document.getElementById('btnSaveRound').disabled = true;
+    // auto-trigger analysis immediately
+    triggerAnalysis(p.id);
   }
 }
 
@@ -272,44 +319,50 @@ function renderPossessions() {
     return;
   }
   el.innerHTML = possessions.map(p => {
-    const statusBadge = p.analysis_status === 'done'
+    const isDone = p.analysis_status === 'done';
+    const isAnalyzing = p.analysis_status === 'analyzing';
+    const isError = p.analysis_status === 'error';
+
+    const statusBadge = isDone
       ? '<span class="text-xs text-green-400">✓ 已分析</span>'
-      : p.analysis_status === 'analyzing'
-      ? '<span class="text-xs text-orange-400 animate-pulse">分析中...</span>'
-      : p.analysis_status === 'error'
+      : isAnalyzing
+      ? '<span class="text-xs text-orange-400 animate-pulse">AI分析中...</span>'
+      : isError
       ? '<span class="text-xs text-red-400">分析失败</span>'
+      : '<span class="text-xs text-gray-600">待分析</span>';
+
+    // Use AI-determined title if available, else show time range
+    const displayTitle = (p.title && p.title !== '') ? p.title
+      : `回合 ${fmtTime(p.start_time)} – ${fmtTime(p.end_time)}`;
+
+    const phaseBadge = p.phase
+      ? `<span class="phase-badge ${PHASE_COLOR[p.phase] || 'bg-gray-700 text-gray-300'}">${PHASE_LABEL[p.phase] || p.phase}</span>`
       : '';
+    const resultBadge = p.result ? `<span class="text-gray-400 text-xs">${p.result}</span>` : '';
+
     return `
-      <div class="bg-gray-900 border border-gray-800 rounded-lg p-3 hover:border-gray-600 transition-colors">
+      <div class="bg-gray-900 border border-gray-800 rounded-lg p-3 hover:border-gray-600 transition-colors cursor-pointer"
+           onclick="${isDone ? `showAnalysis(${p.id})` : ''}">
         <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0">
-            <div class="text-sm font-medium truncate">${p.title || '未命名回合'}</div>
-            <div class="flex items-center gap-2 mt-1">
-              <span class="phase-badge ${PHASE_COLOR[p.phase] || 'bg-gray-700 text-gray-300'}">${p.team} · ${PHASE_LABEL[p.phase] || p.phase}</span>
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-medium truncate">${displayTitle}</div>
+            <div class="flex items-center gap-2 mt-1 flex-wrap">
+              ${phaseBadge}
               <span class="text-gray-500 text-xs font-mono">${fmtTime(p.start_time)} – ${fmtTime(p.end_time)}</span>
-              ${p.result ? `<span class="text-gray-400 text-xs">${p.result}</span>` : ''}
+              ${resultBadge}
             </div>
             ${p.players && p.players.length ? `<div class="text-gray-500 text-xs mt-1">球员：${p.players.join('、')}</div>` : ''}
           </div>
           <div class="flex-shrink-0 flex flex-col items-end gap-1">
             ${statusBadge}
-            <div class="flex gap-1">
+            <div class="flex gap-1" onclick="event.stopPropagation()">
               <button onclick="seekTo(${p.start_time})" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded">▶</button>
-              <button onclick="triggerAnalysis(${p.id})" 
-                class="text-xs bg-orange-500 hover:bg-orange-600 px-2 py-1 rounded ${p.analysis_status === 'analyzing' ? 'opacity-50 cursor-not-allowed' : ''}"
-                ${p.analysis_status === 'analyzing' ? 'disabled' : ''}>
-                AI分析
-              </button>
+              ${isDone || isError ? `<button onclick="triggerAnalysis(${p.id})" class="text-xs bg-gray-700 hover:bg-orange-600 px-2 py-1 rounded">重析</button>` : ''}
               <button onclick="deletePossession(${p.id})" class="text-xs bg-gray-700 hover:bg-red-800 px-2 py-1 rounded">✕</button>
             </div>
           </div>
         </div>
-        ${p.analysis_status === 'done' && p.analysis ? `
-          <button onclick="showAnalysis(${p.id})" class="mt-2 w-full text-left text-xs text-orange-400 hover:text-orange-300">
-            查看分析结果 →
-          </button>
-        ` : ''}
-        ${p.analysis_status === 'error' ? `<div class="mt-1 text-xs text-red-400">${p.analysis_error || '分析失败'}</div>` : ''}
+        ${isError ? `<div class="mt-1 text-xs text-red-400">${p.analysis_error || '分析失败'}</div>` : ''}
       </div>
     `;
   }).join('');
@@ -324,7 +377,7 @@ async function triggerAnalysis(id) {
   const res = await fetch(`/api/games/${gameId}/possessions/${id}/analyze`, {method: 'POST'});
   if (res.ok) {
     const p = possessions.find(x => x.id === id);
-    if (p) p.analysis_status = 'analyzing';
+    if (p) { p.analysis_status = 'analyzing'; p.title = p.title || ''; }
     renderPossessions();
     pollAnalysis(id);
   }
@@ -382,7 +435,12 @@ function showAnalysis(id) {
         <span class="text-sm font-semibold">${p.title || '回合分析'}</span>
         <span class="text-xs ${SEV_COLOR[a.severity] || 'text-gray-400'}">${SEV_LABEL[a.severity] || ''}</span>
       </div>
-      <span class="text-xs text-gray-500 font-mono">${fmtTime(p.start_time)} – ${fmtTime(p.end_time)}</span>
+      <div class="flex items-center gap-2 mt-1">
+        ${p.phase ? `<span class="phase-badge ${PHASE_COLOR[p.phase] || 'bg-gray-700 text-gray-300'}">${PHASE_LABEL[p.phase] || p.phase}</span>` : ''}
+        <span class="text-xs text-gray-500 font-mono">${fmtTime(p.start_time)} – ${fmtTime(p.end_time)}</span>
+        ${p.result ? `<span class="text-xs text-gray-400">${p.result}</span>` : ''}
+      </div>
+      ${p.players && p.players.length ? `<div class="text-xs text-gray-500 mt-1">球员：${p.players.join('、')}</div>` : ''}
     </div>
 
     <div class="p-4 space-y-4">
@@ -392,7 +450,7 @@ function showAnalysis(id) {
       </div>
 
       <div>
-        <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">识别到的错误</div>
+        <div class="text-xs text-gray-400 uppercase tracking-wide mb-2">识别到的问题</div>
         ${errorsHtml}
       </div>
 

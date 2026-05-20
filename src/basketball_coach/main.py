@@ -9,7 +9,7 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 from .models import Base, Game, Possession
@@ -30,6 +30,13 @@ STATIC_DIR = Path(__file__).parent / "static"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     Base.metadata.create_all(bind=engine)
+    # migrate: add home_players column if missing (safe no-op on re-runs)
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE games ADD COLUMN home_players TEXT DEFAULT '[]'"))
+            conn.commit()
+        except Exception:
+            pass
     yield
 
 
@@ -69,6 +76,10 @@ class GameCreate(BaseModel):
     title: str
     opponent: Optional[str] = ""
     game_date: Optional[str] = None
+
+
+class RosterUpdate(BaseModel):
+    players: list[str]
 
 
 @app.get("/api/games")
@@ -114,6 +125,20 @@ def get_game(game_id: int):
         db.close()
 
 
+@app.put("/api/games/{game_id}/roster")
+def update_roster(game_id: int, data: RosterUpdate):
+    db = SessionLocal()
+    try:
+        game = db.query(Game).filter(Game.id == game_id).first()
+        if not game:
+            raise HTTPException(404, "比赛不存在")
+        game.home_players = data.players
+        db.commit()
+        return {"players": game.home_players}
+    finally:
+        db.close()
+
+
 @app.post("/api/games/{game_id}/video")
 async def upload_video(game_id: int, file: UploadFile = File(...)):
     db = SessionLocal()
@@ -138,14 +163,15 @@ async def upload_video(game_id: int, file: UploadFile = File(...)):
 # ── Possessions ───────────────────────────────────────────────────────────────
 
 class PossessionCreate(BaseModel):
-    title: str = ""
     start_time: float
     end_time: float
-    team: str = "我方"
-    phase: str = "offense"
-    result: str = ""
     players: list[str] = []
     description: str = ""
+    # AI-determined fields default to empty; AI fills them in after analysis
+    title: str = ""
+    team: str = "我方"
+    phase: str = ""
+    result: str = ""
 
 
 class PossessionUpdate(BaseModel):
@@ -184,7 +210,7 @@ def create_possession(game_id: int, data: PossessionCreate):
             start_time=data.start_time,
             end_time=data.end_time,
             team=data.team,
-            phase=data.phase,
+            phase=data.phase or "offense",
             result=data.result,
             players=data.players,
             description=data.description,
@@ -225,7 +251,6 @@ def delete_possession(game_id: int, possession_id: int):
         ).first()
         if not p:
             raise HTTPException(404, "回合不存在")
-        # Clean up frames dir
         frames_dir = os.path.join(UPLOADS_DIR, f"game_{game_id}", f"possession_{possession_id}")
         if os.path.exists(frames_dir):
             shutil.rmtree(frames_dir, ignore_errors=True)
@@ -259,7 +284,6 @@ def _do_analyze_possession(possession_id: int):
 
         result = analyze_possession(
             frame_b64_list=b64_frames,
-            title=p.title,
             phase=p.phase,
             team=p.team,
             players=list(p.players or []),
@@ -267,6 +291,16 @@ def _do_analyze_possession(possession_id: int):
             start_time=p.start_time,
             end_time=p.end_time,
         )
+
+        # Apply AI-determined metadata back to the possession
+        if result.get("auto_title"):
+            p.title = result["auto_title"]
+        if result.get("phase") and result["phase"] in (
+            "offense", "defense", "transition_offense", "transition_defense"
+        ):
+            p.phase = result["phase"]
+        if result.get("result"):
+            p.result = result["result"]
 
         p.analysis = result
         p.analysis_status = "done"
@@ -324,17 +358,14 @@ def get_possession(game_id: int, possession_id: int):
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _game_summary(g: Game) -> dict:
-    db = SessionLocal()
-    try:
-        possession_count = len(g.possessions) if g.possessions is not None else 0
-    finally:
-        db.close()
+    possession_count = len(g.possessions) if g.possessions is not None else 0
     return {
         "id": g.id,
         "title": g.title,
         "opponent": g.opponent,
         "game_date": g.game_date.isoformat() if g.game_date else None,
         "has_video": bool(g.video_path),
+        "home_players": g.home_players or [],
         "possession_count": possession_count,
         "created_at": g.created_at.isoformat() if g.created_at else None,
     }

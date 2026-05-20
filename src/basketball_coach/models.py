@@ -15,6 +15,7 @@ class Game(Base):
     opponent = Column(String(100), default="")
     game_date = Column(DateTime, default=datetime.utcnow)
     video_path = Column(String(500))
+    home_players = Column(JSON, default=list)      # ["小宇", "小杰"]
     created_at = Column(DateTime, default=datetime.utcnow)
 
     possessions = relationship("Possession", back_populates="game",
