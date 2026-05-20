@@ -1,5 +1,8 @@
 [phases.setup]
-nixPkgs = ["ffmpeg"]
+nixPkgs = ["ffmpeg", "python311", "python311Packages.pip"]
+
+[phases.install]
+cmds = ["pip install -r requirements.txt", "pip install -e ."]
 
 [start]
-cmd = "basketball-coach"
+cmd = "uvicorn basketball_coach.main:app --host 0.0.0.0 --port $PORT"
