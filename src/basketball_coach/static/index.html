@@ -23,10 +23,10 @@
   <div id="createForm" class="hidden bg-gray-900 border border-gray-700 rounded-xl p-5 mb-6">
     <h2 class="text-base font-semibold mb-4">新建比赛</h2>
     <div class="space-y-3">
-      <input id="fTitle" type="text" placeholder="比赛标题（必填）"
+      <input id="fHome" type="text" placeholder="我方名称（如：红队）"
         class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500">
       <div class="flex gap-3">
-        <input id="fOpponent" type="text" placeholder="对手名称"
+        <input id="fOpponent" type="text" placeholder="对手名称（如：紫队）"
           class="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500">
         <input id="fDate" type="date"
           class="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500">
@@ -76,8 +76,10 @@ function showCreate() { document.getElementById('createForm').classList.remove('
 function hideCreate() { document.getElementById('createForm').classList.add('hidden'); }
 
 async function createGame() {
-  const title = document.getElementById('fTitle').value.trim();
-  if (!title) { alert('请输入比赛标题'); return; }
+  const home = document.getElementById('fHome').value.trim();
+  const title = home ? home + ' vs ' + (document.getElementById('fOpponent').value.trim() || '对方') : '';
+  // title generated
+  if (!home) { document.getElementById('fHome').focus(); return; }
   const opponent = document.getElementById('fOpponent').value.trim();
   const date = document.getElementById('fDate').value;
   const res = await fetch('/api/games', {
