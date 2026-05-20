@@ -200,7 +200,7 @@ function markStart() {
 
 function markEnd() {
   if (video.currentTime <= markStartTime) {
-    alert('结束时间必须晚于开始时间'); return;
+    document.getElementById('endDisplay').style.color='#ef4444'; return;
   }
   markEndTime = video.currentTime;
   document.getElementById('endDisplay').textContent = fmtTime(markEndTime);
