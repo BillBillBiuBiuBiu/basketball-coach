@@ -1,17 +1,47 @@
 import subprocess
 import os
+import shutil
 import base64
 from pathlib import Path
 
 
+def _ffmpeg_exe() -> str:
+    # prefer system ffmpeg if available
+    exe = shutil.which("ffmpeg")
+    if exe:
+        return exe
+    # fall back to imageio-ffmpeg bundled binary
+    try:
+        import imageio_ffmpeg
+        return imageio_ffmpeg.get_ffmpeg_exe()
+    except Exception:
+        pass
+    raise RuntimeError("ffmpeg not found — install ffmpeg or imageio-ffmpeg")
+
+
+def _ffprobe_exe() -> str:
+    exe = shutil.which("ffprobe")
+    if exe:
+        return exe
+    # imageio-ffmpeg puts ffprobe next to ffmpeg
+    try:
+        import imageio_ffmpeg
+        ffmpeg_path = imageio_ffmpeg.get_ffmpeg_exe()
+        probe = ffmpeg_path.replace("ffmpeg", "ffprobe")
+        if os.path.exists(probe):
+            return probe
+    except Exception:
+        pass
+    return "ffprobe"
+
+
 def extract_frames_for_range(video_path: str, start: float, end: float,
                               output_dir: str, fps: float = 1.0) -> list[str]:
-    """Extract frames from a specific time range of a video."""
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     duration = max(end - start, 0.5)
     pattern = os.path.join(output_dir, "frame_%04d.jpg")
     cmd = [
-        "ffmpeg", "-y",
+        _ffmpeg_exe(), "-y",
         "-ss", str(start),
         "-i", video_path,
         "-t", str(duration),
@@ -27,7 +57,7 @@ def extract_frames_for_range(video_path: str, start: float, end: float,
 
 
 def get_video_duration(video_path: str) -> float:
-    cmd = ["ffprobe", "-v", "quiet", "-print_format", "json",
+    cmd = [_ffprobe_exe(), "-v", "quiet", "-print_format", "json",
            "-show_format", video_path]
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
