@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>训练缺陷分析</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+      background: #0f1117;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 24px 16px 48px;
+    }
+    a { color: #94a3b8; text-decoration: none; }
+    a:hover { color: #e2e8f0; }
+
+    .top-bar {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 28px;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #1e2736;
+    }
+    .top-bar .back { font-size: 14px; }
+    .top-bar h1 { font-size: 18px; font-weight: 700; color: #f1f5f9; flex: 1; }
+    .status-badge {
+      font-size: 12px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .status-pending  { background: #2d3748; color: #94a3b8; }
+    .status-analyzing { background: #1a3a5c; color: #60a5fa; }
+    .status-done     { background: #14532d; color: #4ade80; }
+    .status-error    { background: #450a0a; color: #f87171; }
+
+    /* Upload steps */
+    .steps { display: flex; flex-direction: column; gap: 16px; margin-bottom: 32px; }
+    .step-card {
+      background: #1a1f2e;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      padding: 20px 24px;
+    }
+    .step-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .step-num {
+      width: 28px; height: 28px;
+      background: #2d3748;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 13px; font-weight: 700; color: #94a3b8;
+      flex-shrink: 0;
+    }
+    .step-num.done { background: #14532d; color: #4ade80; }
+    .step-title { font-size: 15px; font-weight: 600; color: #e2e8f0; }
+    .step-body { padding-left: 40px; }
+
+    .upload-zone {
+      border: 2px dashed #2d3748;
+      border-radius: 8px;
+      padding: 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s;
+      color: #64748b;
+      font-size: 14px;
+    }
+    .upload-zone:hover { border-color: #4a5568; color: #94a3b8; }
+    .upload-zone.has-file { border-color: #3b82f6; color: #60a5fa; }
+    .upload-zone input[type=file] { display: none; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: background 0.15s, opacity 0.15s;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary { background: #ef4444; color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: #dc2626; }
+    .btn-secondary { background: #2d3748; color: #e2e8f0; }
+    .btn-secondary:hover:not(:disabled) { background: #374151; }
+
+    /* Progress */
+    .progress-section {
+      background: #1a1f2e;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .progress-bar-wrap {
+      background: #0f1117;
+      border-radius: 4px;
+      height: 8px;
+      margin: 12px 0;
+      overflow: hidden;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: #ef4444;
+      border-radius: 4px;
+      transition: width 0.4s ease;
+    }
+    .progress-msg { font-size: 13px; color: #94a3b8; }
+
+    /* Defect dashboard */
+    .dashboard { display: none; }
+    .dashboard.visible { display: block; }
+
+    .section-header {
+      font-size: 13px;
+      font-weight: 700;
+      color: #ef4444;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-header::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: #1e2736;
+    }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    @media (max-width: 480px) {
+      .metrics-grid { grid-template-columns: 1fr; }
+    }
+
+    .metric-card {
+      background: #1a1f2e;
+      border: 1px solid #2d3748;
+      border-radius: 12px;
+      padding: 18px;
+    }
+    .metric-card.has-defect { border-color: #7f1d1d; }
+    .metric-card.no-defect { opacity: 0.55; }
+
+    .metric-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+    .metric-count {
+      font-size: 36px;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 10px;
+    }
+    .metric-count.red { color: #ef4444; }
+    .metric-count.gray { color: #374151; }
+    .metric-verdict {
+      font-size: 13px;
+      line-height: 1.6;
+      color: #ef4444;
+      font-weight: 600;
+    }
+    .metric-verdict.ok { color: #4ade80; font-weight: 400; }
+
+    /* Defect clips */
+    .clips-list { display: flex; flex-direction: column; gap: 10px; }
+    .clip-item {
+      background: #1a1f2e;
+      border: 1px solid #2d3748;
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+    }
+    .clip-left { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; flex-shrink: 0; }
+    .type-badge {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 4px;
+      letter-spacing: 0.03em;
+    }
+    .badge-decision_delay    { background: #450a0a; color: #fca5a5; }
+    .badge-defensive_lapse   { background: #431407; color: #fb923c; }
+    .badge-off_ball_standing { background: #1e1b4b; color: #a5b4fc; }
+    .badge-open_shot_waste   { background: #134e4a; color: #5eead4; }
+    .clip-time {
+      font-size: 11px;
+      color: #64748b;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .clip-desc {
+      font-size: 13px;
+      line-height: 1.6;
+      color: #cbd5e1;
+    }
+    .no-clips {
+      font-size: 14px;
+      color: #374151;
+      padding: 20px;
+      text-align: center;
+    }
+
+    /* Error */
+    .error-box {
+      background: #450a0a;
+      border: 1px solid #7f1d1d;
+      border-radius: 12px;
+      padding: 20px;
+      color: #fca5a5;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<div class="top-bar">
+  <a class="back" href="/">← 返回</a>
+  <h1 id="session-title">训练场次</h1>
+  <span class="status-badge status-pending" id="status-badge">待处理</span>
+</div>
+
+<!-- Upload Steps -->
+<div class="steps" id="upload-section">
+
+  <!-- Step 1: Video -->
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num" id="step1-num">1</div>
+      <div class="step-title">上传训练视频</div>
+    </div>
+    <div class="step-body">
+      <div class="upload-zone" id="video-zone" onclick="document.getElementById('video-input').click()">
+        <input type="file" id="video-input" accept="video/*" onchange="handleVideoSelect(this)" />
+        <div id="video-label">点击选择视频文件（MP4、MOV 等）</div>
+      </div>
+      <div style="margin-top:12px;">
+        <button class="btn btn-secondary" id="upload-video-btn" onclick="uploadVideo()" disabled>上传视频</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Player Photos -->
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num" id="step2-num">2</div>
+      <div class="step-title">上传球员参考照片（可选）</div>
+    </div>
+    <div class="step-body">
+      <div class="upload-zone" id="photo-zone" onclick="document.getElementById('photo-input').click()">
+        <input type="file" id="photo-input" accept="image/*" multiple onchange="handlePhotoSelect(this)" />
+        <div id="photo-label">点击选择照片（正脸清晰、球衣号码可见）</div>
+      </div>
+      <div style="margin-top:12px;">
+        <button class="btn btn-secondary" id="upload-photos-btn" onclick="uploadPhotos()" disabled>上传照片</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Start Analysis -->
+  <div class="step-card">
+    <div class="step-header">
+      <div class="step-num" id="step3-num">3</div>
+      <div class="step-title">开始缺陷分析</div>
+    </div>
+    <div class="step-body">
+      <p style="font-size:13px; color:#64748b; margin-bottom:14px;">
+        系统将以 1fps 采样视频帧，逐批检测 4 类缺陷。分析完成后显示缺陷看板。
+      </p>
+      <button class="btn btn-primary" id="analyze-btn" onclick="startAnalysis()" disabled>开始分析</button>
+    </div>
+  </div>
+</div>
+
+<!-- Progress -->
+<div class="progress-section" id="progress-section" style="display:none;">
+  <div style="font-size:15px; font-weight:700; color:#e2e8f0; margin-bottom:4px;">分析中...</div>
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-fill" id="progress-fill" style="width:0%"></div>
+  </div>
+  <div class="progress-msg" id="progress-msg">准备中...</div>
+</div>
+
+<!-- Error -->
+<div class="error-box" id="error-box" style="display:none;"></div>
+
+<!-- Defect Dashboard -->
+<div class="dashboard" id="dashboard">
+
+  <div class="section-header">缺陷看板</div>
+
+  <div class="metrics-grid" id="metrics-grid">
+    <!-- Filled by JS -->
+  </div>
+
+  <div class="section-header">回合缺陷库</div>
+  <div class="clips-list" id="clips-list">
+    <!-- Filled by JS -->
+  </div>
+
+</div>
+
+<script>
+  const SESSION_ID = parseInt(location.pathname.split('/').pop());
+  let videoFile = null;
+  let photoFiles = [];
+  let videoUploaded = false;
+  let photosUploaded = false;
+
+  // -------------------------------------------------------------------
+  // Init
+  // -------------------------------------------------------------------
+  async function init() {
+    const session = await fetchJSON(`/api/sessions/${SESSION_ID}`);
+    document.getElementById('session-title').textContent = session.title;
+    updateStatusBadge(session.status);
+
+    if (session.status === 'done') {
+      document.getElementById('upload-section').style.display = 'none';
+      await loadResult();
+    } else if (session.status === 'analyzing') {
+      document.getElementById('upload-section').style.display = 'none';
+      showProgress();
+      pollProgress();
+    } else if (session.status === 'error') {
+      showError(session.error_message || '分析失败');
+    } else {
+      // pending
+      if (session.has_video) {
+        videoUploaded = true;
+        markStepDone(1);
+        document.getElementById('analyze-btn').disabled = false;
+        document.getElementById('video-label').textContent = '视频已上传';
+        document.getElementById('video-zone').classList.add('has-file');
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Status badge
+  // -------------------------------------------------------------------
+  function updateStatusBadge(status) {
+    const el = document.getElementById('status-badge');
+    const labels = { pending:'待处理', analyzing:'分析中', done:'完成', error:'错误' };
+    el.textContent = labels[status] || status;
+    el.className = `status-badge status-${status}`;
+  }
+
+  // -------------------------------------------------------------------
+  // Upload helpers
+  // -------------------------------------------------------------------
+  function handleVideoSelect(input) {
+    videoFile = input.files[0];
+    if (videoFile) {
+      document.getElementById('video-label').textContent = videoFile.name;
+      document.getElementById('video-zone').classList.add('has-file');
+      document.getElementById('upload-video-btn').disabled = false;
+    }
+  }
+
+  function handlePhotoSelect(input) {
+    photoFiles = Array.from(input.files);
+    if (photoFiles.length) {
+      document.getElementById('photo-label').textContent = `已选 ${photoFiles.length} 张照片`;
+      document.getElementById('photo-zone').classList.add('has-file');
+      document.getElementById('upload-photos-btn').disabled = false;
+    }
+  }
+
+  async function uploadVideo() {
+    if (!videoFile) return;
+    const btn = document.getElementById('upload-video-btn');
+    btn.disabled = true;
+    btn.textContent = '上传中...';
+    try {
+      const fd = new FormData();
+      fd.append('file', videoFile);
+      const res = await fetch(`/api/sessions/${SESSION_ID}/video`, { method: 'POST', body: fd });
+      if (!res.ok) throw new Error(await res.text());
+      videoUploaded = true;
+      markStepDone(1);
+      document.getElementById('analyze-btn').disabled = false;
+      btn.textContent = '已上传';
+    } catch(e) {
+      alert('视频上传失败: ' + e.message);
+      btn.disabled = false;
+      btn.textContent = '重试';
+    }
+  }
+
+  async function uploadPhotos() {
+    if (!photoFiles.length) return;
+    const btn = document.getElementById('upload-photos-btn');
+    btn.disabled = true;
+    btn.textContent = '上传中...';
+    try {
+      const fd = new FormData();
+      photoFiles.forEach(f => fd.append('files', f));
+      const res = await fetch(`/api/sessions/${SESSION_ID}/player-photos`, { method: 'POST', body: fd });
+      if (!res.ok) throw new Error(await res.text());
+      photosUploaded = true;
+      markStepDone(2);
+      btn.textContent = '已上传';
+    } catch(e) {
+      alert('照片上传失败: ' + e.message);
+      btn.disabled = false;
+      btn.textContent = '重试';
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Analysis
+  // -------------------------------------------------------------------
+  async function startAnalysis() {
+    const btn = document.getElementById('analyze-btn');
+    btn.disabled = true;
+    try {
+      const res = await fetch(`/api/sessions/${SESSION_ID}/analyze`, { method: 'POST' });
+      if (!res.ok) throw new Error(await res.text());
+      document.getElementById('upload-section').style.display = 'none';
+      showProgress();
+      updateStatusBadge('analyzing');
+      pollProgress();
+    } catch(e) {
+      alert('启动分析失败: ' + e.message);
+      btn.disabled = false;
+    }
+  }
+
+  function showProgress() {
+    document.getElementById('progress-section').style.display = '';
+  }
+
+  async function pollProgress() {
+    while (true) {
+      await sleep(2000);
+      try {
+        const p = await fetchJSON(`/api/sessions/${SESSION_ID}/progress`);
+        const pct = Math.max(0, Math.min(100, p.pct || 0));
+        document.getElementById('progress-fill').style.width = pct + '%';
+        document.getElementById('progress-msg').textContent = p.message || '';
+        updateStatusBadge(p.status);
+
+        if (p.status === 'done') {
+          document.getElementById('progress-section').style.display = 'none';
+          await loadResult();
+          break;
+        } else if (p.status === 'error') {
+          document.getElementById('progress-section').style.display = 'none';
+          showError(p.message || '分析失败');
+          break;
+        }
+      } catch(e) {
+        // network hiccup, keep polling
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // Result rendering
+  // -------------------------------------------------------------------
+  async function loadResult() {
+    try {
+      const result = await fetchJSON(`/api/sessions/${SESSION_ID}/result`);
+      renderDashboard(result);
+    } catch(e) {
+      showError('加载分析结果失败: ' + e.message);
+    }
+  }
+
+  function renderDashboard(data) {
+    const metrics = data.metrics || {};
+    const clips = data.defect_clips || [];
+
+    // Render 4 metric cards
+    const grid = document.getElementById('metrics-grid');
+    grid.innerHTML = '';
+
+    const metricDefs = [
+      {
+        key: 'decision_delay',
+        name: '接球决策延迟',
+        getCount: m => m.count,
+        getExtra: m => m.count > 0 ? `均延迟 ${(m.avg_seconds||0).toFixed(1)}s` : '',
+      },
+      {
+        key: 'defensive_lapse',
+        name: '防守漏人',
+        getCount: m => m.count,
+        getExtra: () => '',
+      },
+      {
+        key: 'off_ball_standing',
+        name: '无效无球站立',
+        getCount: m => m.pct_below_avg || 0,
+        countSuffix: '%',
+        getExtra: () => '低于同组均值',
+      },
+      {
+        key: 'open_shot_waste',
+        name: '空位贻误',
+        getCount: m => m.open_chances,
+        getExtra: m => m.open_chances > 0 ? `出手 ${m.shots_taken} 次` : '',
+      },
+    ];
+
+    metricDefs.forEach(def => {
+      const m = metrics[def.key] || {};
+      const count = def.getCount(m) || 0;
+      const verdict = m.verdict || '';
+      const hasDefect = count > 0;
+      const suffix = def.countSuffix || '';
+
+      const card = document.createElement('div');
+      card.className = `metric-card ${hasDefect ? 'has-defect' : 'no-defect'}`;
+      card.innerHTML = `
+        <div class="metric-name">${def.name}</div>
+        <div class="metric-count ${hasDefect ? 'red' : 'gray'}">${count}${suffix}</div>
+        <div class="metric-verdict ${hasDefect ? '' : 'ok'}">${verdict}</div>
+      `;
+      grid.appendChild(card);
+    });
+
+    // Render clips
+    const clipsList = document.getElementById('clips-list');
+    clipsList.innerHTML = '';
+    if (!clips.length) {
+      clipsList.innerHTML = '<div class="no-clips">未检测到具体缺陷片段</div>';
+    } else {
+      clips.forEach(clip => {
+        const timeStr = `${formatTime(clip.time_start)} – ${formatTime(clip.time_end)}`;
+        const item = document.createElement('div');
+        item.className = 'clip-item';
+        item.innerHTML = `
+          <div class="clip-left">
+            <span class="type-badge badge-${clip.type}">${clip.type_label || clip.type}</span>
+            <span class="clip-time">${timeStr}</span>
+          </div>
+          <div class="clip-desc">${escapeHtml(clip.description)}</div>
+        `;
+        clipsList.appendChild(item);
+      });
+    }
+
+    document.getElementById('dashboard').classList.add('visible');
+  }
+
+  // -------------------------------------------------------------------
+  // Helpers
+  // -------------------------------------------------------------------
+  function markStepDone(n) {
+    const el = document.getElementById(`step${n}-num`);
+    if (el) el.classList.add('done');
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-box');
+    el.textContent = '错误：' + msg;
+    el.style.display = '';
+    updateStatusBadge('error');
+  }
+
+  function formatTime(seconds) {
+    if (seconds == null) return '?';
+    const s = Math.round(seconds);
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${String(sec).padStart(2, '0')}`;
+  }
+
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  async function fetchJSON(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res.json();
+  }
+
+  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+  // -------------------------------------------------------------------
+  // Boot
+  // -------------------------------------------------------------------
+  init();
+</script>
+</body>
+</html>

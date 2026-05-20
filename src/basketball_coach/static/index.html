@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>篮球回合分析</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen">
+
+<div class="max-w-3xl mx-auto px-4 py-10">
+  <div class="mb-8 flex items-center justify-between">
+    <div>
+      <h1 class="text-2xl font-bold">🏀 篮球回合分析</h1>
+      <p class="text-gray-400 text-sm mt-1">导入比赛视频，切出关键回合，AI识别错误</p>
+    </div>
+    <button onclick="showCreate()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium">
+      + 新建比赛
+    </button>
+  </div>
+
+  <!-- Create form -->
+  <div id="createForm" class="hidden bg-gray-900 border border-gray-700 rounded-xl p-5 mb-6">
+    <h2 class="text-base font-semibold mb-4">新建比赛</h2>
+    <div class="space-y-3">
+      <input id="fTitle" type="text" placeholder="比赛标题（必填）"
+        class="w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500">
+      <div class="flex gap-3">
+        <input id="fOpponent" type="text" placeholder="对手名称"
+          class="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500">
+        <input id="fDate" type="date"
+          class="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-orange-500">
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button onclick="createGame()" class="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-sm font-medium">创建</button>
+        <button onclick="hideCreate()" class="bg-gray-700 hover:bg-gray-600 text-white px-4 py-2 rounded-lg text-sm">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game list -->
+  <div id="gameList" class="space-y-3">
+    <p class="text-gray-500 text-sm text-center py-12">暂无比赛记录，点击"新建比赛"开始</p>
+  </div>
+</div>
+
+<script>
+async function load() {
+  const res = await fetch('/api/games');
+  const games = await res.json();
+  const el = document.getElementById('gameList');
+  if (!games.length) {
+    el.innerHTML = '<p class="text-gray-500 text-sm text-center py-12">暂无比赛记录，点击"新建比赛"开始</p>';
+    return;
+  }
+  el.innerHTML = games.map(g => `
+    <a href="/game/${g.id}" class="block bg-gray-900 border border-gray-700 hover:border-orange-500 rounded-xl p-4 transition-colors">
+      <div class="flex items-start justify-between">
+        <div>
+          <div class="font-semibold">${g.title}</div>
+          <div class="text-sm text-gray-400 mt-0.5">
+            ${g.opponent ? `对阵：${g.opponent} · ` : ''}
+            ${g.game_date ? new Date(g.game_date).toLocaleDateString('zh-CN') : ''}
+          </div>
+        </div>
+        <div class="text-right text-sm">
+          <div class="${g.has_video ? 'text-green-400' : 'text-gray-500'}">${g.has_video ? '已上传视频' : '待上传视频'}</div>
+          <div class="text-gray-400 mt-0.5">${g.possession_count} 个回合</div>
+        </div>
+      </div>
+    </a>
+  `).join('');
+}
+
+function showCreate() { document.getElementById('createForm').classList.remove('hidden'); }
+function hideCreate() { document.getElementById('createForm').classList.add('hidden'); }
+
+async function createGame() {
+  const title = document.getElementById('fTitle').value.trim();
+  if (!title) { alert('请输入比赛标题'); return; }
+  const opponent = document.getElementById('fOpponent').value.trim();
+  const date = document.getElementById('fDate').value;
+  const res = await fetch('/api/games', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({title, opponent, game_date: date || null})
+  });
+  if (res.ok) { hideCreate(); load(); }
+}
+
+load();
+</script>
+</body>
+</html>
